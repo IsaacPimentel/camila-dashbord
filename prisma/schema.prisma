@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id        String      @id @default(cuid())
+  name      String
+  campaigns Campaign[]
+  quickTasks QuickTask[]
+
+  @@map("accounts")
+}
+
+model Supplier {
+  id       String       @id @default(cuid())
+  name     String
+  pendings PendingItem[]
+
+  @@map("suppliers")
+}
+
+model Campaign {
+  id                  String          @id @default(cuid())
+  accountId           String
+  name                String
+  elemento            String
+  startDate           String
+  endDate             String?
+  stage               String          @default("no_implementado")
+  cotizacionAprobada  Boolean         @default(false)
+  ordenCompra         Boolean         @default(false)
+  facturado           Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+  account             Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  checklist           ChecklistItem[]
+  sunatItems          SunatItem[]
+  pendings            PendingItem[]
+  quickTasks          QuickTask[]
+
+  @@map("campaigns")
+}
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  campaignId String
+  text      String
+  category  String
+  done      Boolean  @default(false)
+  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("checklist_items")
+}
+
+model SunatItem {
+  id        String   @id @default(cuid())
+  campaignId String
+  text      String
+  done      Boolean  @default(false)
+  campaign  Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("sunat_items")
+}
+
+model PendingItem {
+  id          String   @id @default(cuid())
+  campaignId   String
+  supplierId  String
+  description String
+  expectedDate String
+  done        Boolean  @default(false)
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@map("pending_items")
+}
+
+model QuickTask {
+  id        String   @id @default(cuid())
+  accountId String
+  text      String
+  dueDate   String?
+  done      Boolean  @default(false)
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  campaignId String?
+  campaign  Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@map("quick_tasks")
+}

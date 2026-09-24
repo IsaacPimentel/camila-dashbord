@@ -4,8 +4,49 @@ import { Plus, X, Check, Trash2, Building2, Truck, CalendarDays, Circle, CheckCi
 const STORAGE_KEY = 'kam-dashboard-state-v2';
 const CATEGORIES = ['Cotización', 'Arte', 'Aprobación', 'Envío', 'Seguimiento', 'Otro'];
 const STAGES = ['no_implementado', 'implementando', 'finalizado'];
+const API_BASE = import.meta.env?.VITE_API_BASE_URL || '/api';
 const uid = () => Math.random().toString(36).slice(2, 10);
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || 'API request failed');
+  }
+
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function loadPersistedDashboard() {
+  try {
+    const apiData = await apiRequest('/dashboard');
+    if (apiData && apiData.accounts && apiData.campaigns) return apiData;
+  } catch (error) {
+    console.warn('API no disponible, usando almacenamiento local:', error.message || error);
+  }
+
+  if (typeof window !== 'undefined' && window.storage) {
+    const res = await window.storage.get(STORAGE_KEY);
+    if (res && res.value) {
+      try {
+        return JSON.parse(res.value);
+      } catch (e) {
+        console.warn('No se pudo leer el dashboard guardado:', e);
+      }
+    }
+  }
+
+  return seedData();
+}
 
 function stageMeta(stage) {
   if (stage === 'implementando') return { label: 'Implementándose', tone: 'amber' };
@@ -104,23 +145,39 @@ export default function App() {
   const saveTimer = useRef(null);
 
   useEffect(() => {
+    let active = true;
     (async () => {
       try {
-        const res = await window.storage.get(STORAGE_KEY);
-        setData(res && res.value ? JSON.parse(res.value) : seedData());
+        const loaded = await loadPersistedDashboard();
+        if (active) setData(loaded);
       } catch (e) {
-        setData(seedData());
+        if (active) setData(seedData());
+      } finally {
+        if (active) setReady(true);
       }
-      setReady(true);
     })();
+    return () => { active = false; };
   }, []);
 
   const persist = useCallback((next) => {
     setData(next);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      try { await window.storage.set(STORAGE_KEY, JSON.stringify(next)); }
-      catch (e) { console.error('storage error', e); }
+      try {
+        await apiRequest('/dashboard', {
+          method: 'POST',
+          body: JSON.stringify(next),
+        });
+      } catch (error) {
+        console.warn('No se pudo guardar en la API; se guarda localmente:', error.message || error);
+        try {
+          if (typeof window !== 'undefined' && window.storage) {
+            await window.storage.set(STORAGE_KEY, JSON.stringify(next));
+          }
+        } catch (e) {
+          console.error('storage error', e);
+        }
+      }
     }, 250);
   }, []);
 
